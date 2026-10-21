@@ -26,3 +26,11 @@ ordine_di_prova = true
 # Facoltativo. Token da @BotFather e il tuo chat_id. Lascia vuoto per non usarlo.
 token = ""
 chat_id = ""
+
+[bot]
+# Idea B: si entra se alle 9:45 di New York l'oro si e' mosso piu' di
+# soglia_atr volte l'ATR giornaliero dalle 3:00; stop a stop_atr volte l'ATR.
+soglia_atr = 0.5
+stop_atr = 0.5
+# Rischio per trade, come frazione dell'equity (0.0075 = 0,75%)
+rischio_per_trade = 0.0075

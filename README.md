@@ -3,8 +3,10 @@
 Bot di trading intraday per XAUUSD (oro) su MetaTrader 5, scritto in Python.
 Il piano completo è nel documento "Bot trading Gold e Forex: analisi e roadmap".
 
-Stato attuale: **Fase 1**, raccolta dello storico per il backtest.
-La Fase 0 è superata (21 ottobre 2026). Nessuna strategia è ancora attiva.
+Stato attuale: **Fase 2 di prova**. Il bot opera l'idea B (momentum
+all'apertura di New York) **solo sul conto demo**, come prova sui mesi futuri:
+nel backtest non ha superato la soglia per i soldi veri. I risultati dei test
+sono nella cartella `risultati`.
 
 ## Fase 0: come lanciare il controllo sul server
 
@@ -42,6 +44,57 @@ tuo broker, con lo spread vero di ogni momento.
 4. Alla fine trovi nella cartella `logs` un file `dati_backtest_<data>.zip`.
    **Mandalo a Claude.**
 
+## Fase 2: far girare il bot sul conto demo
+
+Il bot gira giorno e notte. Ogni giorno lavorativo alle 15:45 italiane
+(09:45 di New York) decide se aprire un trade sull'oro e lo chiude entro le
+19:30 italiane (13:30 di New York). **Funziona solo su un conto demo**: se
+MT5 è collegato a un conto reale si ferma da solo.
+
+### 1. Avvisi su Telegram (consigliato)
+
+1. In Telegram cerca **@BotFather**, scrivi `/newbot`, scegli un nome e un
+   nome utente che finisca con `bot`. BotFather ti risponde con un **token**.
+2. Cerca il tuo nuovo bot in Telegram e scrivigli un messaggio qualsiasi.
+3. Nel browser apri `https://api.telegram.org/bot<TOKEN>/getUpdates`
+   (al posto di `<TOKEN>` metti il token). Cerca `"chat":{"id":` e copia
+   il numero che segue: è il tuo **chat_id**.
+4. Apri `config.toml` con il Blocco note e scrivi token e chat_id nella
+   sezione `[telegram]`. Salva.
+
+### 2. Preparare il server
+
+1. **Aggiornamenti di Windows**: *Impostazioni → Windows Update → Opzioni
+   avanzate → Orario di attività*: scegli manuale, dalle 8:00 alle 23:00.
+   Così Windows non si riavvia mentre il bot lavora.
+2. **Sospensione**: *Impostazioni → Sistema → Alimentazione* e metti
+   **Mai** alla voce sospensione.
+3. **MT5**: quando accedi al conto demo spunta *Salva password*, così dopo un
+   riavvio si ricollega da solo.
+4. **Avvio automatico**: premi i tasti *Windows + R*, scrivi `shell:startup`
+   e premi Invio. Nella cartella che si apre trascina, tenendo premuto *Alt*,
+   il file `avvia_bot.bat` e l'icona di MT5: si creano dei collegamenti.
+   Così dopo un riavvio partono da soli.
+
+### 3. Avviare il bot
+
+1. Scarica il progetto aggiornato (*Code → Download ZIP*) e sostituisci i
+   file come per la Fase 1 (senza cancellare `.venv` e `config.toml`).
+2. Con MT5 aperto e *Algo Trading* verde, fai doppio clic su `avvia_bot.bat`.
+3. Su Telegram arriva "AVVIO: bot avviato su conto demo...". Poi arriva un
+   "sono vivo" ogni ora, e un messaggio per ogni decisione e ogni ordine.
+4. Lascia aperta la finestra nera: se la chiudi, il bot si ferma.
+
+### Se il bot si blocca da solo
+
+Se il conto demo perde più del 10% dal suo massimo, il bot smette di aprire
+trade e te lo scrive su Telegram. Prima parlane con Claude. Per sbloccarlo,
+crea nella cartella `logs` un file vuoto chiamato `SBLOCCA.txt`: il bot lo
+legge, riparte e lo cancella.
+
+Tutto quello che il bot fa è scritto in `logs/bot.log` (testo) e
+`logs/bot.sqlite` (per le analisi di Claude).
+
 ## Impostazioni (facoltative)
 
 Al primo avvio viene creato `config.toml`, copia di `config.example.toml`.
@@ -60,5 +113,10 @@ Si apre con il Blocco note. Serve solo se:
 | `fase0_controllo.py` | Il programma di controllo |
 | `esporta_dati.bat` | Lancia l'esportazione dello storico con un doppio clic |
 | `fase1_esporta_dati.py` | Esporta prezzi MT5 e dati FRED in un file ZIP |
+| `avvia_bot.bat` | Avvia il bot con un doppio clic e lo fa ripartire se si ferma |
+| `bot/` | Il bot: strategia, rischio, collegamento a MT5, registro |
+| `backtest/` | Il motore di backtest (lo usa Claude) |
+| `risultati/` | Regole delle idee e risultati dei test |
+| `tests/` | Prove automatiche del bot con un finto MT5 |
 | `config.example.toml` | Modello delle impostazioni |
 | `requirements.txt` | Librerie Python necessarie |

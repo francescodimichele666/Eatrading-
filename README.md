@@ -44,6 +44,13 @@ tuo broker, con lo spread vero di ogni momento.
 4. Alla fine trovi nella cartella `logs` un file `dati_backtest_<data>.zip`.
    **Mandalo a Claude.**
 
+### Storico dei cambi (forex)
+
+Per cercare strategie anche sul forex: con MT5 aperto fai doppio clic su
+`esporta_forex.bat`. Crea nella cartella `logs` un file `forex_<CAMBIO>.zip`
+per ogni cambio (circa 10 MB l'uno, 20-40 minuti in tutto).
+**Mandali tutti a Claude.**
+
 ## Fase 2: far girare il bot sul conto demo
 
 Il bot gira giorno e notte. Ogni giorno lavorativo alle 15:45 italiane
@@ -113,6 +120,7 @@ Si apre con il Blocco note. Serve solo se:
 | `fase0_controllo.py` | Il programma di controllo |
 | `esporta_dati.bat` | Lancia l'esportazione dello storico con un doppio clic |
 | `fase1_esporta_dati.py` | Esporta prezzi MT5 e dati FRED in un file ZIP |
+| `esporta_forex.bat`, `fase1_esporta_forex.py` | Esportano lo storico M5 dei cambi principali |
 | `avvia_bot.bat` | Avvia il bot con un doppio clic e lo fa ripartire se si ferma |
 | `bot/` | Il bot: strategia, rischio, collegamento a MT5, registro |
 | `backtest/` | Il motore di backtest (lo usa Claude) |

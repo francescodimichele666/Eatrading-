@@ -1,0 +1,28 @@
+# Copia questo file come "config.toml" e compila i campi.
+# config.toml resta solo sul tuo server: non viene mai caricato su GitHub.
+
+[mt5]
+# Se MT5 e' gia' aperto e collegato al conto demo, lascia tutto vuoto.
+# Altrimenti inserisci numero di conto, password e nome del server
+# (li trovi nella mail di FP Markets).
+login = 0
+password = ""
+server = ""
+# Percorso di terminal64.exe, solo se hai piu' MT5 installati. Esempio:
+# path = "C:\\Program Files\\FP Markets MT5 Terminal\\terminal64.exe"
+path = ""
+
+[controllo]
+# Simbolo da controllare. Se il nome esatto e' diverso (es. "XAUUSD.r"),
+# il programma lo trova da solo cercando "XAU".
+simbolo = "XAUUSD"
+# Per quanti secondi misurare lo spread.
+secondi_misura_spread = 60
+# true = apre e chiude subito 0,01 lotti sul conto DEMO per provare l'esecuzione.
+# Sul conto reale il test non parte mai, anche se qui c'e' true.
+ordine_di_prova = true
+
+[telegram]
+# Facoltativo. Token da @BotFather e il tuo chat_id. Lascia vuoto per non usarlo.
+token = ""
+chat_id = ""

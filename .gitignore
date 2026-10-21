@@ -1,0 +1,10 @@
+# Credenziali: non vanno mai su GitHub
+config.toml
+
+# Ambiente Python e file temporanei
+.venv/
+__pycache__/
+*.pyc
+
+# Risultati locali
+logs/

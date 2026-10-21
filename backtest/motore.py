@@ -18,7 +18,11 @@ from .strategia import FUSO_ITALIA, Parametri
 class Costi:
     punto: float = 0.01                 # XAUUSD.r: 2 decimali
     commissione_oncia: float = 0.07     # circa 7 $ a lotto (100 once) andata e ritorno
-    slittamento: float = 0.10           # $ persi su entrate a mercato e stop
+    # Lo spread salvato nelle barre MT5 e' spesso piu' basso del vero (a volte 0).
+    # Minimo: 0,09 $ misurati dal vivo con l'oro a 4136 $, in proporzione al prezzo.
+    spread_minimo_rel: float = 0.09 / 4136
+    # Slittamento su entrate a mercato e stop: 0,10 $ a 4136 $, in proporzione.
+    slittamento_rel: float = 0.10 / 4136
 
 
 def simula(percorso: pd.DataFrame, segnali: pd.DataFrame, p: Parametri,
@@ -27,7 +31,8 @@ def simula(percorso: pd.DataFrame, segnali: pd.DataFrame, p: Parametri,
     apertura = percorso["open"].to_numpy()
     massimo = percorso["high"].to_numpy()
     minimo = percorso["low"].to_numpy()
-    spread = percorso["spread"].to_numpy() * c.punto
+    spread = np.maximum(percorso["spread"].to_numpy() * c.punto,
+                        apertura * c.spread_minimo_rel)
     ora_it = tempi.tz_convert(FUSO_ITALIA)
     minuti_it = ora_it.hour * 60 + ora_it.minute
     giorno_it = ora_it.tz_localize(None).normalize()
@@ -46,11 +51,12 @@ def simula(percorso: pd.DataFrame, segnali: pd.DataFrame, p: Parametri,
             continue
 
         d = int(s["direzione"])
+        slittamento = apertura[i] * c.slittamento_rel
         distanza_stop = p.stop_atr * s["atr"]
         if d == 1:
-            entrata = apertura[i] + spread[i] + c.slittamento
+            entrata = apertura[i] + spread[i] + slittamento
         else:
-            entrata = apertura[i] - c.slittamento
+            entrata = apertura[i] - slittamento
         stop = entrata - d * distanza_stop
         target = entrata + d * p.target_atr * s["atr"]
 
@@ -61,14 +67,14 @@ def simula(percorso: pd.DataFrame, segnali: pd.DataFrame, p: Parametri,
                 break
             if d == 1:
                 if minimo[j] <= stop:
-                    uscita, motivo = min(stop, apertura[j]) - c.slittamento, "stop"
+                    uscita, motivo = min(stop, apertura[j]) - slittamento, "stop"
                     break
                 if massimo[j] >= target:
                     uscita, motivo = target, "target"
                     break
             else:
                 if massimo[j] + spread[j] >= stop:
-                    uscita, motivo = max(stop, apertura[j] + spread[j]) + c.slittamento, "stop"
+                    uscita, motivo = max(stop, apertura[j] + spread[j]) + slittamento, "stop"
                     break
                 if minimo[j] + spread[j] <= target:
                     uscita, motivo = target, "target"

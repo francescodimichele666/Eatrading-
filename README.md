@@ -29,7 +29,10 @@ Si fa una volta sola, sul server Windows 11.
 2. **Installa Python 3.13** da [python.org](https://www.python.org/downloads/windows/).
    Nella prima schermata spunta **"Add python.exe to PATH"**, poi *Install Now*.
 3. **Scarica questo progetto**: sulla pagina GitHub premi il pulsante verde
-   *Code → Download ZIP* ed estrai la cartella, ad esempio in `C:\Eatrading`.
+   *Code → Download ZIP*. Prima di estrarlo: tasto destro sullo ZIP →
+   *Proprietà* → spunta **Sblocca** in basso → OK (altrimenti Windows può
+   bloccare i file .bat). Poi tasto destro → *Estrai tutto*, ad esempio in
+   `C:\Eatrading`. Non aprire i file .bat da dentro lo ZIP.
 4. **Lascia MT5 aperto** e fai doppio clic su `avvia_controllo.bat`.
    La prima volta impiega un paio di minuti perché installa le librerie.
 5. Il controllo dura circa un minuto e mezzo. Alla fine trovi un rapporto
@@ -142,6 +145,7 @@ Si apre con il Blocco note. Serve solo se:
 | `esporta_forex.bat`, `fase1_esporta_forex.py` | Esportano lo storico M5 dei cambi principali |
 | `esporta_indici.bat` | Esporta lo storico M5 di S&P 500 e Nasdaq 100 |
 | `avvia_bot.bat` | Avvia il bot con un doppio clic e lo fa ripartire se si ferma |
+| `prepara_python.bat` | Usato dagli altri .bat: prepara Python e le librerie (non serve aprirlo) |
 | `bot/` | Il bot: strategia, rischio, collegamento a MT5, registro |
 | `backtest/` | Il motore di backtest (lo usa Claude) |
 | `risultati/` | Regole delle idee e risultati dei test |

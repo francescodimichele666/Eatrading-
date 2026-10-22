@@ -26,3 +26,29 @@ ordine_di_prova = true
 # Facoltativo. Token da @BotFather e il tuo chat_id. Lascia vuoto per non usarlo.
 token = ""
 chat_id = ""
+
+[bot]
+# Idea B: si entra se alle 9:45 di New York l'oro si e' mosso piu' di
+# soglia_atr volte l'ATR giornaliero dalle 3:00; stop a stop_atr volte l'ATR.
+soglia_atr = 0.5
+stop_atr = 0.5
+# Rischio per trade, come frazione dell'equity (0.0075 = 0,75%)
+rischio_per_trade = 0.0075
+
+[rumore]
+# Zona di rumore sugli indici USA (S&P 500 e Nasdaq 100), solo conto demo.
+# Dalle 10:00 alle 15:30 di New York (16:00-21:30 italiane), ogni 30 minuti.
+attivo = true
+# Nomi dei simboli su FP Markets (il bot li cerca anche se hanno un suffisso)
+simboli = ["US500", "US100"]
+# Rischio per trade: 0.005 = 0,5% dell'equity. S&P 500 e Nasdaq si muovono quasi
+# insieme: con 0,5% ciascuno il rischio sui due indici e' circa l'1% (la tua regola).
+rischio_per_trade = 0.005
+# true = opera solo nei giorni con il VIX di ieri sopra la sua mediana di un anno
+filtro_vix = true
+# Se l'apprendimento mette un indice in pausa: true = non opera; false = sul demo
+# opera lo stesso (segnando i trade "in pausa"), per raccogliere dati veri.
+pausa_su_demo = false
+# Spread massimo accettato, come frazione del prezzo (0.0002 = 1,5 punti sull'S&P 500)
+spread_max_relativo = 0.0002
+# k, stop e pausa li decide l'apprendimento del sabato (logs/parametri_rumore.json).

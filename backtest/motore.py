@@ -31,6 +31,7 @@ def simula(percorso: pd.DataFrame, segnali: pd.DataFrame, p: Parametri,
     apertura = percorso["open"].to_numpy()
     massimo = percorso["high"].to_numpy()
     minimo = percorso["low"].to_numpy()
+    chiusura = percorso["close"].to_numpy()
     spread = np.maximum(percorso["spread"].to_numpy() * c.punto,
                         apertura * c.spread_minimo_rel)
     ora_it = tempi.tz_convert(FUSO_ITALIA)
@@ -102,7 +103,7 @@ def statistiche(trade: pd.DataFrame, rischio: float = 0.0075) -> dict:
     vinti, persi = r[r > 0].sum(), -r[r < 0].sum()
     capitale = np.cumprod(1 + rischio * r)
     picco = np.maximum.accumulate(np.concatenate([[1.0], capitale]))[1:]
-    return {
+    valori = {
         "trade": len(r),
         "vincenti_%": round(100 * (r > 0).mean(), 1),
         "R_medio": round(r.mean(), 3),
@@ -111,6 +112,7 @@ def statistiche(trade: pd.DataFrame, rischio: float = 0.0075) -> dict:
         "rendimento_%": round(100 * (capitale[-1] - 1), 1),
         "drawdown_max_%": round(100 * (1 - capitale / picco).max(), 1),
     }
+    return {k: float(v) if isinstance(v, np.floating) else v for k, v in valori.items()}
 
 
 def per_anno(trade: pd.DataFrame, rischio: float = 0.0075) -> pd.DataFrame:
@@ -134,3 +136,69 @@ def monte_carlo(trade: pd.DataFrame, rischio: float = 0.0075, prove: int = 2000,
         cali.append((1 - capitale / picco).max())
     return {"drawdown_mediano_%": round(float(100 * np.median(cali)), 1),
             "drawdown_95%_dei_casi_%": round(float(100 * np.quantile(cali, 0.95)), 1)}
+
+
+def simula_ordini(percorso: pd.DataFrame, ordini: pd.DataFrame, max_trade_giorno: int,
+                  c: Costi = Costi()) -> pd.DataFrame:
+    """Versione generale di `simula`: ogni ordine porta con se' stop, target e
+    orario di uscita. Colonne di `ordini` (indice = momento della decisione, UTC):
+    direzione, stop_prezzo o stop_dist, target_dist (NaN = nessun target),
+    scadenza (UTC), giorno; facoltativa trail_dist (stop che segue il prezzo di chiusura
+    a quella distanza, solo a favore). Si entra all'apertura della prima barra successiva."""
+    tempi = percorso.index
+    apertura = percorso["open"].to_numpy()
+    massimo = percorso["high"].to_numpy()
+    minimo = percorso["low"].to_numpy()
+    chiusura = percorso["close"].to_numpy()
+    spread = np.maximum(percorso["spread"].to_numpy() * c.punto, apertura * c.spread_minimo_rel)
+
+    trade = []
+    libero_da = tempi[0]
+    per_giorno: dict = {}
+    for tempo, o in ordini.iterrows():
+        if tempo < libero_da or per_giorno.get(o["giorno"], 0) >= max_trade_giorno:
+            continue
+        i = tempi.searchsorted(tempo)
+        fine = tempi.searchsorted(o["scadenza"])
+        if i >= fine or fine >= len(tempi):
+            continue
+        d = int(o["direzione"])
+        slittamento = apertura[i] * c.slittamento_rel
+        entrata = apertura[i] + spread[i] + slittamento if d == 1 else apertura[i] - slittamento
+        stop = o["stop_prezzo"] if pd.notna(o.get("stop_prezzo")) else entrata - d * o["stop_dist"]
+        rischio = d * (entrata - stop)
+        if rischio <= 0:
+            continue  # il prezzo ha gia' superato lo stop
+        target = entrata + d * o["target_dist"] if pd.notna(o.get("target_dist")) else None
+        segui = o["trail_dist"] if pd.notna(o.get("trail_dist", np.nan)) else None
+
+        uscita, motivo, j = None, None, i
+        for j in range(i, fine + 1):
+            if j == fine:
+                uscita, motivo = (apertura[j] if d == 1 else apertura[j] + spread[j]), "orario"
+                break
+            if d == 1:
+                if minimo[j] <= stop:
+                    uscita, motivo = min(stop, apertura[j]) - slittamento, "stop"
+                    break
+                if target is not None and massimo[j] >= target:
+                    uscita, motivo = target, "target"
+                    break
+            else:
+                if massimo[j] + spread[j] >= stop:
+                    uscita, motivo = max(stop, apertura[j] + spread[j]) + slittamento, "stop"
+                    break
+                if target is not None and minimo[j] + spread[j] <= target:
+                    uscita, motivo = target, "target"
+                    break
+            if segui is not None:  # aggiornato a barra chiusa: vale dalla barra dopo
+                stop = max(stop, chiusura[j] - segui) if d == 1 else min(stop, chiusura[j] + segui)
+
+        risultato = d * (uscita - entrata) - c.commissione_oncia
+        trade.append({"entrata_utc": tempi[i], "uscita_utc": tempi[j], "direzione": d,
+                      "prezzo_entrata": round(entrata, 2), "prezzo_uscita": round(uscita, 2),
+                      "dollari_oncia": round(risultato, 2), "R": risultato / rischio,
+                      "motivo": motivo, "giorno": o["giorno"]})
+        per_giorno[o["giorno"]] = per_giorno.get(o["giorno"], 0) + 1
+        libero_da = tempi[min(j + 1, len(tempi) - 1)]
+    return pd.DataFrame(trade)

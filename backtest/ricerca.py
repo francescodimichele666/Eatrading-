@@ -64,6 +64,7 @@ def carica_mercato(percorso: str) -> Mercato:
         regole = json.loads(z.read("regole.json")) if "regole.json" in nomi else {}
     simbolo = nome_m5.removeprefix("mt5_").removesuffix("_M5.csv.gz")
     m5 = m5[m5.index >= "2017-07-01"]
+    regole.setdefault("spread_barre", float(m5["spread"].iloc[-75_000:].median()))
     return mercato_da(simbolo, m5, costi_per(simbolo, regole, float(m5["close"].iloc[-1])))
 
 
@@ -80,14 +81,18 @@ def costi_per(simbolo: str, regole: dict, prezzo_finale: float) -> Costi:
         return Costi()
     punto = regole.get("punto", 0.001 if "JPY" in simbolo else 0.00001)
     contratto = regole.get("contratto", 100_000)
-    spread = regole.get("spread_vivo") or 10 * punto  # 1 pip se non misurato
     prezzo = regole.get("prezzo") or prezzo_finale
-    # commissione FP Markets raw: circa 7 $ a lotto andata e ritorno; in valuta di
-    # prezzo per unita' approssimiamo dividendo per il contratto (JPY: *prezzo/100 non serve,
-    # perche' per i cross in JPY il valore e' gia' in JPY per unita').
-    commissione = 7.0 / contratto * (prezzo if simbolo[3:6] != "USD" else 1)
+    spread = regole.get("spread_vivo") or regole.get("spread_barre", 10) * punto
+    if spread >= 8 * punto:
+        # conto standard (simbolo senza .r): il costo del broker e' gia' tutto nello spread
+        commissione = 0.0
+    else:
+        # conto raw: circa 7 $ a lotto andata e ritorno, convertiti nella valuta del prezzo
+        commissione = 7.0 / contratto * (prezzo if simbolo[3:6] != "USD" else 1)
+        spread = max(spread, 2 * punto)
+    # slittamento: 0,2 pip a ogni entrata e a ogni stop
     return Costi(punto=punto, commissione_oncia=commissione,
-                 spread_minimo_rel=spread / prezzo, slittamento_rel=0.5 * spread / prezzo)
+                 spread_minimo_rel=spread / prezzo, slittamento_rel=2 * punto / prezzo)
 
 
 def a_utc(giorni, minuti) -> pd.DatetimeIndex:

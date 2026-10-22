@@ -29,13 +29,14 @@ RR = indicatori.RR
 
 
 def cross_sintetico(a: Mercato, b: Mercato) -> Mercato:
-    """Barre M5 del prodotto A x B. Massimo e minimo sono presi prudenti (massimo x massimo,
-    minimo x minimo): gli stop nel backtest scattano un po' piu' spesso che nella realta'."""
+    """Barre M5 del prodotto A x B. Il vero massimo del cross dentro la barra non si conosce:
+    massimo x massimo lo esagera (le due coppie vanno al contrario), quindi si usano apertura e
+    chiusura. Gli stop vengono controllati ogni 5 minuti, a prezzo di chiusura."""
     df = a.m5.join(b.m5, how="inner", lsuffix="_a", rsuffix="_b")
+    apertura, chiusura = df["open_a"] * df["open_b"], df["close_a"] * df["close_b"]
     m5 = pd.DataFrame({
-        "open": df["open_a"] * df["open_b"], "high": df["high_a"] * df["high_b"],
-        "low": df["low_a"] * df["low_b"], "close": df["close_a"] * df["close_b"],
-        "spread": 0.0}, index=df.index)
+        "open": apertura, "high": np.maximum(apertura, chiusura),
+        "low": np.minimum(apertura, chiusura), "close": chiusura, "spread": 0.0}, index=df.index)
     prezzo_a, prezzo_b, prezzo = a.m5["close"].iloc[-1], b.m5["close"].iloc[-1], m5["close"].iloc[-1]
     costi = Costi(
         punto=a.costi.punto,

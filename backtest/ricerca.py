@@ -320,18 +320,21 @@ def apprendimento(tutte: dict) -> dict:
 
 
 def gruppi():
-    from . import indicatori, rumore
+    from . import indicatori, pubblicate, rumore
     classiche = {n: (f, g, 1) for n, (f, g) in FAMIGLIE.items()}
     nuove = {n: (f, g, indicatori.MAX_TRADE_GIORNO) for n, (f, g) in indicatori.FAMIGLIE.items()}
     zona = {n: (f, g, rumore.MAX_TRADE_GIORNO) for n, (f, g) in rumore.FAMIGLIE.items()}
+    indici = {n: (f, g, 1) for n, (f, g) in pubblicate.FAMIGLIE_INDICI.items()}
+    forex = {n: (f, g, 1) for n, (f, g) in pubblicate.FAMIGLIE_FOREX.items()}
     return {"classiche": classiche, "indicatori": nuove, "rumore": zona,
+            "pubblicate_indici": indici, "pubblicate_forex": forex,
             "tutte": {**classiche, **nuove, **zona}}
 
 
 def main():
     arg = argparse.ArgumentParser()
     arg.add_argument("zip")
-    arg.add_argument("--gruppo", choices=["classiche", "indicatori", "rumore", "tutte"], default="tutte")
+    arg.add_argument("--gruppo", choices=["classiche", "indicatori", "rumore", "pubblicate_indici", "pubblicate_forex", "tutte"], default="tutte")
     arg.add_argument("--finale", action="store_true", help="apre il cassetto dei 18 mesi")
     a = arg.parse_args()
     m = carica_mercato(a.zip)

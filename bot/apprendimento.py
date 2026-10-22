@@ -35,7 +35,7 @@ from backtest.rumore import zona_di_rumore
 VARIANTI = [{"k": k, "stop": s} for k in (1.0, 1.5) for s in (0.5, 1.0)]
 PREDEFINITI = {"k": 1.0, "stop": 1.0, "rr": 2.5, "pausa": False}
 MESI_SCELTA = 36
-TRADE_SALUTE = 60
+TRADE_SALUTE = 60  # con il filtro VIX sono circa 4-5 mesi di trade
 FILE_PARAMETRI = "parametri_rumore.json"
 
 
@@ -71,7 +71,7 @@ def regole(simbolo: str) -> dict:
     return r
 
 
-def prove(simbolo: str, m5: pd.DataFrame) -> tuple:
+def prove(simbolo: str, m5: pd.DataFrame, nervosi: pd.Series | None = None) -> tuple:
     r = regole(simbolo)
     r.setdefault("spread_barre", float(m5["spread"].iloc[-75_000:].median()))
     m = mercato_da(simbolo, m5, costi_per(simbolo, r, float(m5["close"].iloc[-1])))
@@ -80,6 +80,8 @@ def prove(simbolo: str, m5: pd.DataFrame) -> tuple:
         t = simula_ordini(m.m5, zona_di_rumore(m, 990, v["k"], v["stop"], "rr"), 3, m.costi)
         if not t.empty:
             t["data"] = pd.to_datetime(t["giorno"])
+            if nervosi is not None:  # come il bot: solo i giorni con il VIX sopra la mediana
+                t = t[nervosi.reindex(t["data"]).fillna(False).to_numpy()]
         risultati[json.dumps(v)] = t
     return m, risultati
 
@@ -119,11 +121,19 @@ def confronta_con_registro(registro, simbolo: str, attesi: pd.DataFrame) -> list
     return righe
 
 
-def aggiorna(cartella_log: Path, simboli: list[str], registro=None) -> str:
+def aggiorna(cartella_log: Path, simboli: list[str], registro=None, filtro_vix: bool = True) -> str:
     oggi = datetime.now(timezone.utc).date().isoformat()
     parametri, testo = {}, [f"# Apprendimento del {oggi}", ""]
+    nervosi = None
+    if filtro_vix:
+        from .vix import giorni_nervosi, storico
+        try:
+            nervosi = giorni_nervosi(storico(cartella_log))
+            testo += ["Filtro VIX attivo: conti fatti solo sui giorni di mercato nervoso.", ""]
+        except Exception as errore:  # noqa: BLE001
+            testo += [f"VIX non disponibile ({errore}): conti fatti su tutti i giorni.", ""]
     for simbolo in simboli:
-        m, risultati = prove(simbolo, scarica(simbolo))
+        m, risultati = prove(simbolo, scarica(simbolo), nervosi)
         limite = pd.Timestamp(oggi) - pd.DateOffset(months=MESI_SCELTA)
 
         def punti(chiave):

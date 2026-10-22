@@ -147,10 +147,13 @@ class ProvaZonaDiRumore(unittest.TestCase):
         cfg = {"controllo": {"simbolo": "XAUUSD"}, "bot": {}, "rumore": {"simboli": ["US500", "US100"]}}
         self.patch = mock.patch.object(principale, "CARTELLA", Path(self.cartella.name))
         self.patch.start()
+        self.vix = mock.patch("bot.vix.oggi_si_opera", return_value=(True, "VIX alto"))
+        self.vix.start()
         self.bot = principale.Bot(cfg)
         self.bot.avvia()
 
     def tearDown(self):
+        self.vix.stop()
         self.patch.stop()
         self.bot.r.db.close()
         self.cartella.cleanup()
@@ -178,8 +181,8 @@ class ProvaZonaDiRumore(unittest.TestCase):
         self.assertEqual((p.symbol, p.type), ("US500", mt5.ORDER_TYPE_BUY))
         stop = stato.prezzi["US500"][1] - p.sl
         self.assertAlmostEqual(p.tp - stato.prezzi["US500"][1], 2.5 * stop, delta=0.02)
-        # rischio 1% di 10.000 = 100; 1 punto = 1 $ a lotto
-        self.assertAlmostEqual(p.volume * stop, 100, delta=stop * 0.01 + 0.1)
+        # rischio 0,5% di 10.000 = 50; 1 punto = 1 $ a lotto
+        self.assertAlmostEqual(p.volume * stop, 50, delta=stop * 0.01 + 0.1)
         self.alle(11, 0, 5)
         self.assertEqual(len(stato.ordini), 1)  # gia' in posizione: niente secondo ordine
         self.alle(16, 0, 5)
@@ -191,8 +194,18 @@ class ProvaZonaDiRumore(unittest.TestCase):
         prepara_indice("US500", salto=60)
         cartella_log = Path(self.cartella.name) / "logs"
         (cartella_log / "parametri_rumore.json").write_text('{"US500": {"pausa": true}}')
+        self.bot.pausa_su_demo = True
         self.alle(10, 30, 5)
         self.assertEqual(stato.posizioni, [])
+
+    def test_pausa_sul_demo_opera_lo_stesso(self):
+        prepara_indice("US500", salto=60)
+        cartella_log = Path(self.cartella.name) / "logs"
+        (cartella_log / "parametri_rumore.json").write_text('{"US500": {"pausa": true}}')
+        self.alle(10, 30, 5)
+        self.assertEqual(len(stato.posizioni), 1)
+        riga = self.bot.r.db.execute("SELECT strategia FROM trade").fetchone()
+        self.assertEqual(riga[0], "zona di rumore (in pausa)")
 
     def test_massimo_tre_trade_al_giorno(self):
         prepara_indice("US500", salto=60)
@@ -201,12 +214,38 @@ class ProvaZonaDiRumore(unittest.TestCase):
             self.alle(ora, minuto, 5)
         self.assertEqual(len(stato.ordini), 3)
 
+    def test_giorno_calmo_niente_trade(self):
+        prepara_indice("US500", salto=60)
+        with mock.patch("bot.vix.oggi_si_opera", return_value=(False, "VIX basso")):
+            self.alle(10, 30, 5)
+        self.assertEqual(stato.posizioni, [])
+
+    def test_vix_non_disponibile_opera_e_avvisa(self):
+        prepara_indice("US500", salto=60)
+        with mock.patch("bot.vix.oggi_si_opera", return_value=(None, "VIX non disponibile")):
+            self.alle(10, 30, 5)
+        self.assertEqual(len(stato.posizioni), 1)
+
     def test_ogni_controllo_una_volta_sola(self):
         prepara_indice("US500", salto=60)
         self.alle(10, 30, 5)
         stato.posizioni = []
         self.alle(10, 31)
         self.assertEqual(len(stato.ordini), 1)
+
+
+class ProvaFiltroVix(unittest.TestCase):
+    def test_come_nel_backtest(self):
+        import pandas as pd
+        from bot import vix
+        giorni = pd.bdate_range("2024-01-01", periods=400)
+        serie = pd.Series(np.r_[np.full(300, 15.0), np.full(100, 25.0)], index=giorni)
+        serie.iloc[350] = 10.0
+        with tempfile.TemporaryDirectory() as c, mock.patch.object(vix, "storico", return_value=serie):
+            nervosi = vix.giorni_nervosi(serie)
+            for i in (299, 300, 301, 351, 352):
+                si, _ = vix.oggi_si_opera(Path(c), giorni[i].date())
+                self.assertEqual(si, bool(nervosi.iloc[i]), i)
 
 
 if __name__ == "__main__":

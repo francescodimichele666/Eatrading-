@@ -41,8 +41,14 @@ rischio_per_trade = 0.0075
 attivo = true
 # Nomi dei simboli su FP Markets (il bot li cerca anche se hanno un suffisso)
 simboli = ["US500", "US100"]
-# Rischio per trade: 0.01 = 1% dell'equity
-rischio_per_trade = 0.01
+# Rischio per trade: 0.005 = 0,5% dell'equity. S&P 500 e Nasdaq si muovono quasi
+# insieme: con 0,5% ciascuno il rischio sui due indici e' circa l'1% (la tua regola).
+rischio_per_trade = 0.005
+# true = opera solo nei giorni con il VIX di ieri sopra la sua mediana di un anno
+filtro_vix = true
+# Se l'apprendimento mette un indice in pausa: true = non opera; false = sul demo
+# opera lo stesso (segnando i trade "in pausa"), per raccogliere dati veri.
+pausa_su_demo = false
 # Spread massimo accettato, come frazione del prezzo (0.0002 = 1,5 punti sull'S&P 500)
 spread_max_relativo = 0.0002
 # k, stop e pausa li decide l'apprendimento del sabato (logs/parametri_rumore.json).

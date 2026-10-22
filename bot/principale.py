@@ -53,8 +53,10 @@ class Bot:
         cfg_r = cfg.get("rumore", {})
         self.rumore_attivo = bool(cfg_r.get("attivo", True))
         self.nomi_indici = list(cfg_r.get("simboli", ["US500", "US100"]))
-        self.rischio_indici = float(cfg_r.get("rischio_per_trade", 0.01))
+        self.rischio_indici = float(cfg_r.get("rischio_per_trade", 0.005))
         self.spread_max_indici = float(cfg_r.get("spread_max_relativo", 0.0002))
+        self.filtro_vix = bool(cfg_r.get("filtro_vix", True))
+        self.pausa_su_demo = bool(cfg_r.get("pausa_su_demo", False))
         self.simbolo = None
         self.indici: list[str] = []
         self.ultimo_battito = None
@@ -217,10 +219,23 @@ class Bot:
         if s.direzione == 0:
             return
         lato = "long" if s.direzione == 1 else "short"
+        if self.filtro_vix:
+            from .vix import oggi_si_opera
+            si, spiegazione = oggi_si_opera(CARTELLA / "logs", oggi_ny)
+            if si is False:
+                self.r.evento("decisione", f"{simbolo}: segnale {lato} ignorato. {spiegazione}")
+                return
+            if si is None and self.r.leggi("vix_avviso") != oggi_ny.isoformat():
+                self.r.scrivi("vix_avviso", oggi_ny.isoformat())
+                self.r.evento("errore", spiegazione, avvisa=True)
+        commento = "zona rumore"
         if p.get("pausa"):
-            self.r.evento("decisione", f"{simbolo}: segnale {lato} ignorato, indice in PAUSA "
-                                       f"dall'apprendimento (ultimi trade in perdita)", avvisa=True)
-            return
+            if self.pausa_su_demo:
+                self.r.evento("decisione", f"{simbolo}: segnale {lato} ignorato, indice in PAUSA "
+                                           f"dall'apprendimento (ultimi trade in perdita)", avvisa=True)
+                return
+            # sul demo si opera lo stesso, per raccogliere dati veri anche nei periodi di pausa
+            commento = "zona rumore PAUSA"
         if broker.posizioni_del_bot(simbolo):
             return  # gia' in posizione: come nel backtest, un trade alla volta
         inizio_giorno = new_york(oggi_ny, 0, 0).isoformat()
@@ -240,9 +255,10 @@ class Bot:
             self.r.evento("decisione", f"{simbolo}: segnale ignorato, anche il lotto minimo "
                                        f"rischierebbe troppo", avvisa=True)
             return
-        ticket, prezzo, stop = broker.apri(simbolo, s.direzione, lotti, s.distanza_stop, "zona rumore",
+        ticket, prezzo, stop = broker.apri(simbolo, s.direzione, lotti, s.distanza_stop, commento,
                                            s.distanza_target)
-        self.r.trade_aperto(ticket, s.direzione, lotti, prezzo, stop, simbolo, "zona di rumore")
+        self.r.trade_aperto(ticket, s.direzione, lotti, prezzo, stop, simbolo,
+                            "zona di rumore" + (" (in pausa)" if p.get("pausa") else ""))
         self.r.evento("ordine", f"{simbolo}: aperto {lato.upper()} {lotti} lotti a {prezzo}, stop {stop}, "
                                 f"take profit a {p['rr']} volte lo stop. {s.motivo}", avvisa=True,
                       ticket=ticket)
@@ -254,7 +270,7 @@ class Bot:
         self.r.scrivi("appreso_il", oggi_ny.isoformat())
         from .apprendimento import aggiorna
         try:
-            rapporto = aggiorna(CARTELLA / "logs", self.indici, self.r)
+            rapporto = aggiorna(CARTELLA / "logs", self.indici, self.r, self.filtro_vix)
             self.r.evento("apprendimento", rapporto, avvisa=True)
         except Exception as errore:  # noqa: BLE001 - un errore qui non deve fermare il bot
             self.r.log.exception("apprendimento fallito")

@@ -67,10 +67,11 @@ Il bot gira giorno e notte. Ogni giorno lavorativo (orari italiani, che di
 solito sono quelli di New York + 6 ore):
 
 - **oro**: alle 15:45 decide se aprire un trade e lo chiude entro le 19:30;
-- **S&P 500 e Nasdaq 100**: dalle 16:00 alle 21:30, ogni mezz'ora, entra se il
-  prezzo è uscito dalla zona di rumore (al massimo 3 trade al giorno per
-  indice, rischio 1% ciascuno, stop e take profit sul server del broker), e
-  chiude tutto alle 22:00.
+- **S&P 500 e Nasdaq 100**: solo nei giorni di mercato nervoso (VIX di ieri
+  sopra la sua mediana di un anno), dalle 16:00 alle 21:30, ogni mezz'ora,
+  entra se il prezzo è uscito dalla zona di rumore (al massimo 3 trade al
+  giorno per indice, rischio 0,5% ciascuno, stop e take profit sul server del
+  broker), e chiude tutto alle 22:00.
 
 **Funziona solo su un conto demo**: se MT5 è collegato a un conto reale si
 ferma da solo. Il sabato mattina fa l'apprendimento e ti manda il rapporto su

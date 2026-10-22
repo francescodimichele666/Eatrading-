@@ -40,6 +40,7 @@ ANNI_ALLENAMENTO = 3
 NY = "America/New_York"
 MINUTO_PRIMA_ENTRATA = 90
 MINUTO_ULTIMA_USCITA = 1380
+RISCHIO = 0.01  # regola di Francesco: al massimo 1% del conto per trade
 
 
 # ------------------------------------------------------------------ dati
@@ -63,11 +64,14 @@ def carica_mercato(percorso: str) -> Mercato:
         regole = json.loads(z.read("regole.json")) if "regole.json" in nomi else {}
     simbolo = nome_m5.removeprefix("mt5_").removesuffix("_M5.csv.gz")
     m5 = m5[m5.index >= "2017-07-01"]
+    return mercato_da(simbolo, m5, costi_per(simbolo, regole, float(m5["close"].iloc[-1])))
+
+
+def mercato_da(simbolo: str, m5: pd.DataFrame, costi: Costi) -> Mercato:
     ora_broker = m5.index.tz_convert(NY).tz_localize(None) + pd.Timedelta(hours=ORE_BROKER_SU_NEW_YORK)
     giorno = ora_broker.normalize()
     minuto = (ora_broker.hour * 60 + ora_broker.minute).to_numpy()
     d1 = m5.groupby(giorno).agg({"open": "first", "high": "max", "low": "min", "close": "last"})
-    costi = costi_per(simbolo, regole, float(m5["close"].iloc[-1]))
     return Mercato(simbolo, m5, costi, giorno.to_numpy(), minuto, d1, atr(d1, 14).shift(1))
 
 
@@ -225,19 +229,9 @@ def t_stat(r: np.ndarray) -> float:
     return float(r.mean() / r.std(ddof=1) * np.sqrt(len(r))) if len(r) > 2 and r.std() > 0 else 0.0
 
 
-def valuta_famiglia(m: Mercato, nome: str, funzione, griglia: dict, percorso: pd.DataFrame):
-    prove = {}
-    for p in combinazioni(griglia):
-        if not valida(nome, p):
-            continue
-        t = simula_ordini(percorso, funzione(m, **p), 1, m.costi)
-        if not t.empty:
-            t["anno"] = pd.DatetimeIndex(t["giorno"]).year
-        prove[json.dumps(p, sort_keys=True)] = t
-    sviluppo = {k: t[pd.DatetimeIndex(t["giorno"]) < FINE_SVILUPPO] if not t.empty else t
-                for k, t in prove.items()}
-    pf_positivi = np.mean([statistiche(t).get("profit_factor", 0) > 1 for t in sviluppo.values()])
-
+def walk_forward(sviluppo: dict):
+    """Ogni anno sceglie la combinazione con il t-stat migliore nei 3 anni prima
+    (almeno 30 trade) e la usa sull'anno dopo, che non ha visto."""
     anni = sorted({a for t in sviluppo.values() if not t.empty for a in t["anno"].unique()})
     fuori, scelte = [], []
     for anno in anni[ANNI_ALLENAMENTO:]:
@@ -252,15 +246,33 @@ def valuta_famiglia(m: Mercato, nome: str, funzione, griglia: dict, percorso: pd
         fuori.append(t[t["anno"] == anno])
         scelte.append({"anno": anno, "parametri": migliore})
     oos = pd.concat(fuori) if fuori else pd.DataFrame(columns=["R", "giorno"])
-    s = statistiche(oos)
-    anni_oos = per_anno(oos)
+    return oos, scelte
+
+
+def valuta_famiglia(m: Mercato, nome: str, funzione, griglia: dict, percorso: pd.DataFrame,
+                    max_trade: int = 1):
+    prove = {}
+    for p in combinazioni(griglia):
+        if not valida(nome, p):
+            continue
+        t = simula_ordini(percorso, funzione(m, **p), max_trade, m.costi)
+        if not t.empty:
+            t["anno"] = pd.DatetimeIndex(t["giorno"]).year
+        prove[json.dumps(p, sort_keys=True)] = t
+    sviluppo = {k: t[pd.DatetimeIndex(t["giorno"]) < FINE_SVILUPPO] if not t.empty else t
+                for k, t in prove.items()}
+    pf_positivi = np.mean([statistiche(t, RISCHIO).get("profit_factor", 0) > 1 for t in sviluppo.values()])
+
+    oos, scelte = walk_forward(sviluppo)
+    s = statistiche(oos, RISCHIO)
+    anni_oos = per_anno(oos, RISCHIO)
     s.update({
         "t_stat": round(t_stat(oos["R"].to_numpy()), 2) if len(oos) else 0,
         "anni_in_utile": f"{int((anni_oos['R_totale'] > 0).sum())}/{len(anni_oos)}" if len(anni_oos) else "-",
         "griglia_pf_sopra_1_%": round(100 * pf_positivi),
         "combinazioni": len(prove),
     })
-    s.update(monte_carlo(oos))
+    s.update(monte_carlo(oos, RISCHIO))
     passa = (s.get("trade", 0) >= 150 and s.get("profit_factor", 0) >= 1.2 and s["t_stat"] >= 2.5
              and len(anni_oos) and (anni_oos["R_totale"] > 0).mean() >= 0.6 and pf_positivi >= 0.5)
     s["supera_sviluppo"] = bool(passa)
@@ -280,25 +292,48 @@ def finale(prove: dict, scelte: list) -> dict:
     migliore = max(prove, key=punti)
     t = prove[migliore]
     chiuso = t[pd.DatetimeIndex(t["giorno"]) >= FINE_SVILUPPO]
-    s = statistiche(chiuso)
+    s = statistiche(chiuso, RISCHIO)
     s["t_stat"] = round(t_stat(chiuso["R"].to_numpy()), 2) if len(chiuso) else 0
     s["parametri"] = migliore
     return s
 
 
+def apprendimento(tutte: dict) -> dict:
+    """Il sistema "che apprende": ogni anno rifa' la scelta tra TUTTE le combinazioni di
+    tutte le famiglie, guardando solo il passato, e usa la vincente l'anno dopo."""
+    sviluppo = {k: t[pd.DatetimeIndex(t["giorno"]) < FINE_SVILUPPO] if not t.empty else t
+                for k, t in tutte.items()}
+    oos, scelte = walk_forward(sviluppo)
+    s = statistiche(oos, RISCHIO)
+    anni_oos = per_anno(oos, RISCHIO)
+    s["t_stat"] = round(t_stat(oos["R"].to_numpy()), 2) if len(oos) else 0
+    s["anni_in_utile"] = f"{int((anni_oos['R_totale'] > 0).sum())}/{len(anni_oos)}" if len(anni_oos) else "-"
+    s.update(monte_carlo(oos, RISCHIO))
+    return s, scelte
+
+
+def gruppi():
+    from . import indicatori
+    classiche = {n: (f, g, 1) for n, (f, g) in FAMIGLIE.items()}
+    nuove = {n: (f, g, indicatori.MAX_TRADE_GIORNO) for n, (f, g) in indicatori.FAMIGLIE.items()}
+    return {"classiche": classiche, "indicatori": nuove, "tutte": {**classiche, **nuove}}
+
+
 def main():
     arg = argparse.ArgumentParser()
     arg.add_argument("zip")
+    arg.add_argument("--gruppo", choices=["classiche", "indicatori", "tutte"], default="tutte")
     arg.add_argument("--finale", action="store_true", help="apre il cassetto dei 18 mesi")
     a = arg.parse_args()
     m = carica_mercato(a.zip)
-    righe = [f"# Ricerca su {m.nome} - {datetime.now():%d/%m/%Y %H:%M}", "",
+    righe = [f"# Ricerca su {m.nome} ({a.gruppo}) - {datetime.now():%d/%m/%Y %H:%M}", "",
              f"Dati {m.m5.index[0]:%d/%m/%Y} - {m.m5.index[-1]:%d/%m/%Y}; sviluppo fino al "
-             f"{FINE_SVILUPPO:%d/%m/%Y}. Costi: {m.costi}", ""]
-    sintesi = []
-    for nome, (funzione, griglia) in FAMIGLIE.items():
+             f"{FINE_SVILUPPO:%d/%m/%Y}. Rischio {RISCHIO:.0%} a trade. Costi: {m.costi}", ""]
+    sintesi, tutte = [], {}
+    for nome, (funzione, griglia, max_trade) in gruppi()[a.gruppo].items():
         print(f"{m.nome}: {nome}...", flush=True)
-        s, scelte, prove = valuta_famiglia(m, nome, funzione, griglia, m.m5)
+        s, scelte, prove = valuta_famiglia(m, nome, funzione, griglia, m.m5, max_trade)
+        tutte.update({f"{nome} {k}": t for k, t in prove.items()})
         riga = {"famiglia": nome, **{k: s.get(k) for k in [
             "trade", "profit_factor", "R_medio", "t_stat", "anni_in_utile", "griglia_pf_sopra_1_%",
             "drawdown_95%_dei_casi_%", "combinazioni", "supera_sviluppo"]}}
@@ -309,9 +344,14 @@ def main():
         sintesi.append(riga)
         righe += [f"## {nome}", "", pd.DataFrame([s]).T.to_markdown(), "",
                   "Parametri scelti nel walk-forward:", "", pd.DataFrame(scelte).to_markdown(index=False), ""]
+    s, scelte = apprendimento(tutte)
+    sintesi.append({"famiglia": "APPRENDIMENTO (sceglie ogni anno tra tutte)", **{k: s.get(k) for k in [
+        "trade", "profit_factor", "R_medio", "t_stat", "anni_in_utile", "drawdown_95%_dei_casi_%"]}})
+    righe += ["## Apprendimento: ogni anno sceglie tra tutte le combinazioni", "",
+              pd.DataFrame([s]).T.to_markdown(), "", pd.DataFrame(scelte).to_markdown(index=False), ""]
     righe[4:4] = ["## Sintesi", "", pd.DataFrame(sintesi).to_markdown(index=False), ""]
     Path("risultati").mkdir(exist_ok=True)
-    file = Path("risultati") / f"ricerca_{m.nome}_{datetime.now():%Y%m%d_%H%M}.md"
+    file = Path("risultati") / f"ricerca_{m.nome}_{a.gruppo}_{datetime.now():%Y%m%d_%H%M}.md"
     file.write_text("\n".join(righe), encoding="utf-8")
     print("\n".join(righe[:12 + len(sintesi)]))
     print(f"\nRapporto: {file}")

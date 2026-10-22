@@ -5,6 +5,8 @@ Per ogni simbolo crea un file logs/forex_<SIMBOLO>.zip (circa 10 MB l'uno) con:
 - le regole del simbolo (contratto, punto, swap) e lo spread misurato dal vivo per 20 secondi.
 
 Uso: doppio clic su esporta_forex.bat (oppure: python fase1_esporta_forex.py).
+Con dei nomi dopo il comando esporta solo quelli; "US500|SP500" prova i nomi in ordine
+(serve per gli indici, che ogni broker chiama in modo diverso). Esempio: esporta_indici.bat.
 """
 
 import json
@@ -46,8 +48,9 @@ def main():
     adesso = datetime.now(timezone.utc)
     cartella = CARTELLA / "logs"
     cartella.mkdir(exist_ok=True)
-    for nome in SIMBOLI:
-        simbolo = trova_cambio(nome)
+    for nomi in sys.argv[1:] or SIMBOLI:
+        nome = nomi.split("|")[0]
+        simbolo = next((s for s in map(trova_cambio, nomi.split("|")) if s), None)
         if simbolo is None:
             print(f"{nome} non disponibile su questo conto, lo salto.")
             continue

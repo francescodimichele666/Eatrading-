@@ -31,6 +31,7 @@ def simula(percorso: pd.DataFrame, segnali: pd.DataFrame, p: Parametri,
     apertura = percorso["open"].to_numpy()
     massimo = percorso["high"].to_numpy()
     minimo = percorso["low"].to_numpy()
+    chiusura = percorso["close"].to_numpy()
     spread = np.maximum(percorso["spread"].to_numpy() * c.punto,
                         apertura * c.spread_minimo_rel)
     ora_it = tempi.tz_convert(FUSO_ITALIA)
@@ -142,11 +143,13 @@ def simula_ordini(percorso: pd.DataFrame, ordini: pd.DataFrame, max_trade_giorno
     """Versione generale di `simula`: ogni ordine porta con se' stop, target e
     orario di uscita. Colonne di `ordini` (indice = momento della decisione, UTC):
     direzione, stop_prezzo o stop_dist, target_dist (NaN = nessun target),
-    scadenza (UTC), giorno. Si entra all'apertura della prima barra successiva."""
+    scadenza (UTC), giorno; facoltativa trail_dist (stop che segue il prezzo di chiusura
+    a quella distanza, solo a favore). Si entra all'apertura della prima barra successiva."""
     tempi = percorso.index
     apertura = percorso["open"].to_numpy()
     massimo = percorso["high"].to_numpy()
     minimo = percorso["low"].to_numpy()
+    chiusura = percorso["close"].to_numpy()
     spread = np.maximum(percorso["spread"].to_numpy() * c.punto, apertura * c.spread_minimo_rel)
 
     trade = []
@@ -167,6 +170,7 @@ def simula_ordini(percorso: pd.DataFrame, ordini: pd.DataFrame, max_trade_giorno
         if rischio <= 0:
             continue  # il prezzo ha gia' superato lo stop
         target = entrata + d * o["target_dist"] if pd.notna(o.get("target_dist")) else None
+        segui = o["trail_dist"] if pd.notna(o.get("trail_dist", np.nan)) else None
 
         uscita, motivo, j = None, None, i
         for j in range(i, fine + 1):
@@ -187,6 +191,8 @@ def simula_ordini(percorso: pd.DataFrame, ordini: pd.DataFrame, max_trade_giorno
                 if target is not None and minimo[j] + spread[j] <= target:
                     uscita, motivo = target, "target"
                     break
+            if segui is not None:  # aggiornato a barra chiusa: vale dalla barra dopo
+                stop = max(stop, chiusura[j] - segui) if d == 1 else min(stop, chiusura[j] + segui)
 
         risultato = d * (uscita - entrata) - c.commissione_oncia
         trade.append({"entrata_utc": tempi[i], "uscita_utc": tempi[j], "direzione": d,

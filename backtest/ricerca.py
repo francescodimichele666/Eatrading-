@@ -113,7 +113,7 @@ def intervallo(m: Mercato, da: int, a: int) -> pd.DataFrame:
 
 
 def ordini(giorni, minuti_entrata, direzione, minuti_uscita, stop_dist=None, stop_prezzo=None,
-           target_dist=None) -> pd.DataFrame:
+           target_dist=None, trail_dist=None) -> pd.DataFrame:
     giorni = pd.DatetimeIndex(giorni)
     n = len(giorni)
     df = pd.DataFrame({
@@ -121,6 +121,7 @@ def ordini(giorni, minuti_entrata, direzione, minuti_uscita, stop_dist=None, sto
         "stop_dist": np.full(n, np.nan) if stop_dist is None else np.asarray(stop_dist, dtype=float),
         "stop_prezzo": np.full(n, np.nan) if stop_prezzo is None else np.asarray(stop_prezzo, dtype=float),
         "target_dist": np.full(n, np.nan) if target_dist is None else np.asarray(target_dist, dtype=float),
+        "trail_dist": np.full(n, np.nan) if trail_dist is None else np.asarray(trail_dist, dtype=float),
         "scadenza": a_utc(giorni, np.broadcast_to(minuti_uscita, n)),
         "giorno": giorni,
     }, index=a_utc(giorni, np.broadcast_to(minuti_entrata, n)))
@@ -318,16 +319,18 @@ def apprendimento(tutte: dict) -> dict:
 
 
 def gruppi():
-    from . import indicatori
+    from . import indicatori, rumore
     classiche = {n: (f, g, 1) for n, (f, g) in FAMIGLIE.items()}
     nuove = {n: (f, g, indicatori.MAX_TRADE_GIORNO) for n, (f, g) in indicatori.FAMIGLIE.items()}
-    return {"classiche": classiche, "indicatori": nuove, "tutte": {**classiche, **nuove}}
+    zona = {n: (f, g, rumore.MAX_TRADE_GIORNO) for n, (f, g) in rumore.FAMIGLIE.items()}
+    return {"classiche": classiche, "indicatori": nuove, "rumore": zona,
+            "tutte": {**classiche, **nuove, **zona}}
 
 
 def main():
     arg = argparse.ArgumentParser()
     arg.add_argument("zip")
-    arg.add_argument("--gruppo", choices=["classiche", "indicatori", "tutte"], default="tutte")
+    arg.add_argument("--gruppo", choices=["classiche", "indicatori", "rumore", "tutte"], default="tutte")
     arg.add_argument("--finale", action="store_true", help="apre il cassetto dei 18 mesi")
     a = arg.parse_args()
     m = carica_mercato(a.zip)

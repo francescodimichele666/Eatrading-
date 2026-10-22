@@ -17,6 +17,7 @@ sys.modules["MetaTrader5"] = mt5
 from bot import principale  # noqa: E402
 from bot.orari import NEW_YORK, ORE_BROKER_SU_NEW_YORK  # noqa: E402
 from bot.strategia_b import atr_wilder, decidi  # noqa: E402
+from bot import strategia_rumore  # noqa: E402
 
 
 def secondi_broker(ora_ny: datetime) -> int:
@@ -104,7 +105,7 @@ class ProvaBot(unittest.TestCase):
         stato.posizioni = []  # il broker ha chiuso con lo stop
         self.alle(10, 0)
         riga = self.bot.r.db.execute("SELECT motivo FROM trade").fetchone()
-        self.assertEqual(riga[0], "stop o chiusa fuori dal bot")
+        self.assertEqual(riga[0], "stop, target o chiusa fuori dal bot")
 
     def test_posizione_senza_stop_viene_chiusa(self):
         self.alle(9, 45, 10)
@@ -116,6 +117,96 @@ class ProvaBot(unittest.TestCase):
         stato.demo = False
         with self.assertRaises(SystemExit):
             self.bot.avvia()
+
+
+def prepara_indice(simbolo="US500", giorno=datetime(2026, 10, 20), salto=0.0, ora_salto=(10, 25)):
+    """15 giornate di M5 dalle 09:30 alle 16:00 NY: ogni giorno il prezzo oscilla di +/-10 punti
+    attorno a 5000 (zona di rumore circa 0,2%). Il giorno di prova, dalla barra `ora_salto`,
+    il prezzo sale di `salto` punti."""
+    m5 = []
+    for g in range(15, -1, -1):
+        d = giorno - timedelta(days=g)
+        if d.weekday() >= 5:
+            continue
+        t = d.replace(hour=9, minute=30)
+        while t < d.replace(hour=16):
+            onda = 10.0 if (t.minute // 5) % 2 else -10.0
+            chiusura = 5000 + onda + (salto if g == 0 and (t.hour, t.minute) >= ora_salto else 0)
+            m5.append((secondi_broker(t), 5000, max(5000, chiusura), min(5000, chiusura), chiusura))
+            t += timedelta(minutes=5)
+    stato.barre[(simbolo, mt5.TIMEFRAME_M5)] = np.array(m5, dtype=TIPO_BARRE)
+    stato.prezzi[simbolo] = (5000 + salto, 5000.5 + salto)
+
+
+class ProvaZonaDiRumore(unittest.TestCase):
+    def setUp(self):
+        self.cartella = tempfile.TemporaryDirectory()
+        stato.__init__()
+        prepara_mercato(movimento=5)  # oro fermo: nessun trade sull'oro
+        prepara_indice("US100")
+        cfg = {"controllo": {"simbolo": "XAUUSD"}, "bot": {}, "rumore": {"simboli": ["US500", "US100"]}}
+        self.patch = mock.patch.object(principale, "CARTELLA", Path(self.cartella.name))
+        self.patch.start()
+        self.bot = principale.Bot(cfg)
+        self.bot.avvia()
+
+    def tearDown(self):
+        self.patch.stop()
+        self.bot.r.db.close()
+        self.cartella.cleanup()
+
+    def alle(self, ora, minuto, secondo=0):
+        t = datetime(2026, 10, 20, ora, minuto, secondo, tzinfo=NEW_YORK)
+        stato.ora_tick = secondi_broker(t)
+        with mock.patch.object(principale, "adesso_utc", return_value=t.astimezone(timezone.utc)):
+            self.bot.giro()
+
+    def test_dentro_la_zona_nessun_trade(self):
+        prepara_indice("US500", salto=0)
+        for ora, minuto in [(10, 0), (10, 30), (11, 0)]:
+            self.alle(ora, minuto, 5)
+        self.assertEqual(stato.posizioni, [])
+
+    def test_fuori_dalla_zona_entra_con_stop_e_target_e_chiude_alle_16(self):
+        prepara_indice("US500", salto=60)
+        stato.equity = 10_000
+        self.alle(10, 0, 5)
+        self.assertEqual(stato.posizioni, [])  # alle 10:00 il salto non c'e' ancora
+        self.alle(10, 30, 5)
+        self.assertEqual(len(stato.posizioni), 1)
+        p = stato.posizioni[0]
+        self.assertEqual((p.symbol, p.type), ("US500", mt5.ORDER_TYPE_BUY))
+        stop = stato.prezzi["US500"][1] - p.sl
+        self.assertAlmostEqual(p.tp - stato.prezzi["US500"][1], 2.5 * stop, delta=0.02)
+        # rischio 1% di 10.000 = 100; 1 punto = 1 $ a lotto
+        self.assertAlmostEqual(p.volume * stop, 100, delta=stop * 0.01 + 0.1)
+        self.alle(11, 0, 5)
+        self.assertEqual(len(stato.ordini), 1)  # gia' in posizione: niente secondo ordine
+        self.alle(16, 0, 5)
+        self.assertEqual(stato.posizioni, [])
+        riga = self.bot.r.db.execute("SELECT simbolo, strategia, motivo FROM trade").fetchone()
+        self.assertEqual(riga, ("US500", "zona di rumore", "orario"))
+
+    def test_pausa_dall_apprendimento(self):
+        prepara_indice("US500", salto=60)
+        cartella_log = Path(self.cartella.name) / "logs"
+        (cartella_log / "parametri_rumore.json").write_text('{"US500": {"pausa": true}}')
+        self.alle(10, 30, 5)
+        self.assertEqual(stato.posizioni, [])
+
+    def test_massimo_tre_trade_al_giorno(self):
+        prepara_indice("US500", salto=60)
+        for ora, minuto in [(10, 30), (11, 0), (11, 30), (12, 0), (12, 30)]:
+            stato.posizioni = []  # chiuse dallo stop o dal target
+            self.alle(ora, minuto, 5)
+        self.assertEqual(len(stato.ordini), 3)
+
+    def test_ogni_controllo_una_volta_sola(self):
+        prepara_indice("US500", salto=60)
+        self.alle(10, 30, 5)
+        stato.posizioni = []
+        self.alle(10, 31)
+        self.assertEqual(len(stato.ordini), 1)
 
 
 if __name__ == "__main__":

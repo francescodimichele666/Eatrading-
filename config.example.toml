@@ -34,3 +34,15 @@ soglia_atr = 0.5
 stop_atr = 0.5
 # Rischio per trade, come frazione dell'equity (0.0075 = 0,75%)
 rischio_per_trade = 0.0075
+
+[rumore]
+# Zona di rumore sugli indici USA (S&P 500 e Nasdaq 100), solo conto demo.
+# Dalle 10:00 alle 15:30 di New York (16:00-21:30 italiane), ogni 30 minuti.
+attivo = true
+# Nomi dei simboli su FP Markets (il bot li cerca anche se hanno un suffisso)
+simboli = ["US500", "US100"]
+# Rischio per trade: 0.01 = 1% dell'equity
+rischio_per_trade = 0.01
+# Spread massimo accettato, come frazione del prezzo (0.0002 = 1,5 punti sull'S&P 500)
+spread_max_relativo = 0.0002
+# k, stop e pausa li decide l'apprendimento del sabato (logs/parametri_rumore.json).

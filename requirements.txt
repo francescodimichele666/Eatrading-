@@ -2,3 +2,6 @@ MetaTrader5>=5.0.45
 requests>=2.31
 # fusi orari su Windows (zoneinfo)
 tzdata>=2024.1
+# backtest e apprendimento del sabato
+pandas>=2.2
+numpy>=1.26

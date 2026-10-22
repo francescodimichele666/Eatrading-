@@ -1,12 +1,22 @@
 # Eatrading
 
-Bot di trading intraday per XAUUSD (oro) su MetaTrader 5, scritto in Python.
+Bot di trading intraday su MetaTrader 5, scritto in Python: oro (XAUUSD) e indici USA
+(S&P 500 e Nasdaq 100).
 Il piano completo è nel documento "Bot trading Gold e Forex: analisi e roadmap".
 
-Stato attuale: **Fase 2 di prova**. Il bot opera l'idea B (momentum
-all'apertura di New York) **solo sul conto demo**, come prova sui mesi futuri:
-nel backtest non ha superato la soglia per i soldi veri. I risultati dei test
-sono nella cartella `risultati`.
+Stato attuale: **Fase 2 di prova, solo conto demo**. Il bot opera due strategie
+come prova sui mesi futuri (nessuna delle due ha ancora superato tutti gli
+esami per i soldi veri):
+
+- **oro, idea B**: momentum all'apertura di New York;
+- **indici USA, zona di rumore**: momentum intraday dopo l'apertura di Wall
+  Street, dallo studio dello Swiss Finance Institute (2024). Dal 2017 al 2025
+  ha guadagnato (profit factor 1,22-1,27), negli ultimi 18 mesi è in pari.
+
+Ogni sabato il bot fa l'**apprendimento**: rifà i conti sugli ultimi 4 anni,
+ricalibra la zona di rumore, mette in pausa un indice se gli ultimi 60 trade
+sono in perdita e confronta i trade veri con quelli attesi. I risultati dei
+test sono nella cartella `risultati`.
 
 ## Fase 0: come lanciare il controllo sul server
 
@@ -53,10 +63,18 @@ per ogni cambio (circa 10 MB l'uno, 20-40 minuti in tutto).
 
 ## Fase 2: far girare il bot sul conto demo
 
-Il bot gira giorno e notte. Ogni giorno lavorativo alle 15:45 italiane
-(09:45 di New York) decide se aprire un trade sull'oro e lo chiude entro le
-19:30 italiane (13:30 di New York). **Funziona solo su un conto demo**: se
-MT5 è collegato a un conto reale si ferma da solo.
+Il bot gira giorno e notte. Ogni giorno lavorativo (orari italiani, che di
+solito sono quelli di New York + 6 ore):
+
+- **oro**: alle 15:45 decide se aprire un trade e lo chiude entro le 19:30;
+- **S&P 500 e Nasdaq 100**: dalle 16:00 alle 21:30, ogni mezz'ora, entra se il
+  prezzo è uscito dalla zona di rumore (al massimo 3 trade al giorno per
+  indice, rischio 1% ciascuno, stop e take profit sul server del broker), e
+  chiude tutto alle 22:00.
+
+**Funziona solo su un conto demo**: se MT5 è collegato a un conto reale si
+ferma da solo. Il sabato mattina fa l'apprendimento e ti manda il rapporto su
+Telegram (lo trovi anche in `logs/apprendimento_<data>.md`).
 
 ### 1. Avvisi su Telegram (consigliato)
 
@@ -94,8 +112,8 @@ MT5 è collegato a un conto reale si ferma da solo.
 
 ### Se il bot si blocca da solo
 
-Se il conto demo perde più del 10% dal suo massimo, il bot smette di aprire
-trade e te lo scrive su Telegram. Prima parlane con Claude. Per sbloccarlo,
+Se il conto demo perde più del 10% dal suo massimo, o più del 3% in un
+giorno, il bot smette di aprire trade e te lo scrive su Telegram. Prima parlane con Claude. Per sbloccarlo,
 crea nella cartella `logs` un file vuoto chiamato `SBLOCCA.txt`: il bot lo
 legge, riparte e lo cancella.
 
@@ -121,6 +139,7 @@ Si apre con il Blocco note. Serve solo se:
 | `esporta_dati.bat` | Lancia l'esportazione dello storico con un doppio clic |
 | `fase1_esporta_dati.py` | Esporta prezzi MT5 e dati FRED in un file ZIP |
 | `esporta_forex.bat`, `fase1_esporta_forex.py` | Esportano lo storico M5 dei cambi principali |
+| `esporta_indici.bat` | Esporta lo storico M5 di S&P 500 e Nasdaq 100 |
 | `avvia_bot.bat` | Avvia il bot con un doppio clic e lo fa ripartire se si ferma |
 | `bot/` | Il bot: strategia, rischio, collegamento a MT5, registro |
 | `backtest/` | Il motore di backtest (lo usa Claude) |

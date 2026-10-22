@@ -12,7 +12,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Limiti:
     rischio_per_trade: float = 0.0075   # 0,75% dell'equity
-    perdita_giornaliera_max: float = 0.02
+    perdita_giornaliera_max: float = 0.03   # tre strumenti all'1%: 3 stop pieni nello stesso giorno
     drawdown_max: float = 0.10
     spread_max: float = 0.50            # dollari; dal vivo il mediano era 0,09
     eta_prezzo_max: float = 120         # secondi senza nuovi prezzi = dati vecchi
@@ -44,15 +44,16 @@ class KillSwitch:
             self.r.evento("blocco", motivo + ". Il bot non apre piu' trade finche' non lo sblocchi.",
                           avvisa=True)
 
-    def motivo_per_non_entrare(self, equity: float, spread: float, eta_prezzo: float) -> str | None:
+    def motivo_per_non_entrare(self, equity: float, spread: float, eta_prezzo: float,
+                               spread_max: float | None = None) -> str | None:
         bloccato = self.r.leggi("bloccato")
         if bloccato:
             return f"bot bloccato: {bloccato}"
         inizio = self.r.leggi("equity_inizio_giorno", equity)
         if equity < inizio * (1 - self.limiti.perdita_giornaliera_max):
             return f"perdita del giorno oltre il {self.limiti.perdita_giornaliera_max:.0%}"
-        if spread > self.limiti.spread_max:
-            return f"spread anomalo: {spread:.2f} $"
+        if spread > (spread_max or self.limiti.spread_max):
+            return f"spread anomalo: {spread:.2f}"
         if eta_prezzo > self.limiti.eta_prezzo_max:
             return f"prezzi fermi da {eta_prezzo:.0f} secondi"
         return None

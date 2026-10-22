@@ -37,6 +37,11 @@ class Registro:
                 prezzo_uscita REAL, risultato REAL, motivo TEXT);
             CREATE TABLE IF NOT EXISTS stato (chiave TEXT PRIMARY KEY, valore TEXT);
         """)
+        colonne = [r[1] for r in self.db.execute("PRAGMA table_info(trade)")]
+        if "simbolo" not in colonne:  # registri creati prima degli indici
+            self.db.execute("ALTER TABLE trade ADD COLUMN simbolo TEXT")
+            self.db.execute("ALTER TABLE trade ADD COLUMN strategia TEXT")
+            self.db.commit()
         self.telegram = telegram
 
     def evento(self, tipo: str, testo: str, avvisa: bool = False, **dati):
@@ -55,14 +60,15 @@ class Registro:
             return
         try:
             requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          data={"chat_id": chat, "text": f"[Bot oro DEMO] {testo}"[:4000]}, timeout=10)
+                          data={"chat_id": chat, "text": f"[Bot DEMO] {testo}"[:4000]}, timeout=10)
         except requests.RequestException as errore:
             self.log.warning(f"Telegram non raggiungibile: {errore}")
 
-    def trade_aperto(self, ticket, direzione, lotti, prezzo, stop):
+    def trade_aperto(self, ticket, direzione, lotti, prezzo, stop, simbolo=None, strategia=None):
         self.db.execute("INSERT OR REPLACE INTO trade (ticket, apertura_utc, direzione, lotti, "
-                        "prezzo_entrata, stop) VALUES (?, ?, ?, ?, ?, ?)",
-                        (ticket, datetime.now(timezone.utc).isoformat(), direzione, lotti, prezzo, stop))
+                        "prezzo_entrata, stop, simbolo, strategia) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (ticket, datetime.now(timezone.utc).isoformat(), direzione, lotti, prezzo, stop,
+                         simbolo, strategia))
         self.db.commit()
 
     def trade_chiuso(self, ticket, prezzo, risultato, motivo):
@@ -71,8 +77,15 @@ class Registro:
                         (datetime.now(timezone.utc).isoformat(), prezzo, risultato, motivo, ticket))
         self.db.commit()
 
-    def trade_aperti_registrati(self) -> list[int]:
-        return [r[0] for r in self.db.execute("SELECT ticket FROM trade WHERE chiusura_utc IS NULL")]
+    def trade_aperti_registrati(self, simbolo: str) -> list[int]:
+        """Trade aperti di un simbolo (quelli senza simbolo sono dell'oro, registrati prima degli indici)."""
+        return [r[0] for r in self.db.execute(
+            "SELECT ticket FROM trade WHERE chiusura_utc IS NULL AND COALESCE(simbolo, ?) = ?",
+            (simbolo if "XAU" in simbolo else "", simbolo))]
+
+    def trade_di_oggi(self, simbolo: str, da_utc: str) -> int:
+        return self.db.execute("SELECT COUNT(*) FROM trade WHERE simbolo=? AND apertura_utc>=?",
+                               (simbolo, da_utc)).fetchone()[0]
 
     def leggi(self, chiave: str, predefinito=None):
         riga = self.db.execute("SELECT valore FROM stato WHERE chiave=?", (chiave,)).fetchone()

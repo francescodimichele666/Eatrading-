@@ -106,8 +106,10 @@ def _riempimento(simbolo: str):
     return mt5.ORDER_FILLING_RETURN
 
 
-def apri(simbolo: str, direzione: int, lotti: float, distanza_stop: float, commento: str):
-    """Ordine a mercato con stop loss sul server del broker. Restituisce (ticket, prezzo, stop)."""
+def apri(simbolo: str, direzione: int, lotti: float, distanza_stop: float, commento: str,
+         distanza_target: float | None = None):
+    """Ordine a mercato con stop loss (e take profit, se indicato) sul server del broker.
+    Restituisce (ticket, prezzo, stop)."""
     info = mt5.symbol_info(simbolo)
     bid, ask, _ = prezzo(simbolo)
     entrata = ask if direzione == 1 else bid
@@ -119,6 +121,8 @@ def apri(simbolo: str, direzione: int, lotti: float, distanza_stop: float, comme
         "comment": commento[:31], "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": _riempimento(simbolo),
     }
+    if distanza_target:
+        richiesta["tp"] = round(entrata + direzione * distanza_target, info.digits)
     esito = mt5.order_send(richiesta)
     if esito is None or esito.retcode != mt5.TRADE_RETCODE_DONE:
         raise ErroreBroker(f"apertura rifiutata: {esito.retcode if esito else mt5.last_error()} "

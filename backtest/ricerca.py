@@ -90,9 +90,10 @@ def costi_per(simbolo: str, regole: dict, prezzo_finale: float) -> Costi:
         # conto raw: circa 7 $ a lotto andata e ritorno, convertiti nella valuta del prezzo
         commissione = 7.0 / contratto * (prezzo if simbolo[3:6] != "USD" else 1)
         spread = max(spread, 2 * punto)
-    # slittamento: 0,2 pip a ogni entrata e a ogni stop
+    # slittamento a ogni entrata e a ogni stop: 0,2 pip sui cambi, mezzo spread sugli indici
+    slittamento = 2 * punto if contratto >= 1000 else 0.5 * spread
     return Costi(punto=punto, commissione_oncia=commissione,
-                 spread_minimo_rel=spread / prezzo, slittamento_rel=2 * punto / prezzo)
+                 spread_minimo_rel=spread / prezzo, slittamento_rel=slittamento / prezzo)
 
 
 def a_utc(giorni, minuti) -> pd.DatetimeIndex:

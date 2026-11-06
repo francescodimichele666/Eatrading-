@@ -1,13 +1,10 @@
 @echo off
-rem Doppio clic per esportare lo storico per il backtest (Fase 1).
+title Eatrading - esporta_dati
+rem Doppio clic per esportare lo storico dei prezzi da MT5 (lascia MT5 aperto).
 cd /d "%~dp0"
-
-if not exist .venv\Scripts\python.exe (
-    echo Prima lancia avvia_controllo.bat almeno una volta.
-    pause
-    exit /b 1
-)
-
-.venv\Scripts\python.exe -m pip install --quiet -r requirements.txt
+echo Eatrading - esporta_dati. Cartella: %CD%
+call prepara_python.bat || goto fine
 .venv\Scripts\python.exe fase1_esporta_dati.py
+:fine
+echo.
 pause
